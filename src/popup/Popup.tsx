@@ -1,6 +1,6 @@
 import { useCallback, useState } from 'react'
 import { EXTENSION_NAME } from '@/shared/constants'
-import type { ExtensionMessage, PingResponse } from '@/shared/messages'
+import type { PopupMessage, PingResponse } from '@/shared/messages'
 
 type Status = 'idle' | 'checking' | 'ready' | 'error'
 
@@ -11,7 +11,7 @@ export function Popup() {
   const pingServiceWorker = useCallback(() => {
     setStatus('checking')
     setDetail('')
-    const message: ExtensionMessage = { type: 'PING' }
+    const message: PopupMessage = { type: 'PING' }
     chrome.runtime.sendMessage(message, (response: PingResponse | undefined) => {
       const err = chrome.runtime.lastError
       if (err) {
