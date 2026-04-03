@@ -25,3 +25,15 @@ dist-ssr/
 *.sw?
 
 tests/fixtures/sample-yt-player-response.json
+
+*.zip
+*.crx
+
+.env
+.env.*
+!.env.example
+
+coverage/
+
+.DS_Store
+Thumbs.db
