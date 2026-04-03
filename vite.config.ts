@@ -14,4 +14,13 @@ export default defineConfig({
     alias: { '@': path.resolve(dirname, 'src') },
   },
   plugins: [react(), crx({ manifest })],
+  build: {
+    rollupOptions: {
+      // crxjs handles manifest entry points; this extra input ensures the
+      // offscreen document's TS module is compiled and its script src rewritten.
+      input: {
+        offscreen: path.resolve(dirname, 'public/offscreen.html'),
+      },
+    },
+  },
 })
