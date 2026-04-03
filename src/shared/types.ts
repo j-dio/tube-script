@@ -14,20 +14,6 @@ export interface TranscriptRequestPayload {
   captionTracks: CaptionTrack[]
 }
 
-/** Content script → service worker */
-export interface TranscriptRequest {
-  type: 'EXTRACT_TRANSCRIPT'
-  payload: TranscriptRequestPayload
-}
-
-/** Service worker → content script / popup */
-export interface TranscriptResponse {
-  type: 'TRANSCRIPT_RESULT'
-  payload:
-    | { success: true; wordCount: number }
-    | { success: false; error: string }
-}
-
 /** Parsed caption segment after Stage 1. */
 export interface CaptionSegment {
   text: string
