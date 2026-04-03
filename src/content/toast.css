@@ -1,0 +1,25 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer components {
+  .ts-toast-container {
+    @apply pointer-events-none fixed right-4 top-4 z-[2147483647] flex max-w-sm flex-col gap-2;
+  }
+
+  .ts-toast {
+    @apply pointer-events-auto rounded-lg border px-4 py-3 text-sm font-medium shadow-lg backdrop-blur-sm transition-opacity duration-300;
+  }
+
+  .ts-toast--success {
+    @apply border-emerald-600/40 bg-emerald-950/95 text-emerald-50;
+  }
+
+  .ts-toast--error {
+    @apply border-red-600/40 bg-red-950/95 text-red-50;
+  }
+
+  .ts-toast--leave {
+    @apply opacity-0;
+  }
+}
