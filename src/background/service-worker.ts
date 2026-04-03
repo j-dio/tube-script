@@ -1,5 +1,5 @@
 import { EXTENSION_NAME } from '@/shared/constants'
-import type { ExtensionMessage, PingResponse } from '@/shared/messages'
+import type { InboundMessage, PingResponse } from '@/shared/messages'
 
 chrome.runtime.onInstalled.addListener(() => {
   console.log(`[${EXTENSION_NAME}] service worker installed`)
@@ -7,7 +7,7 @@ chrome.runtime.onInstalled.addListener(() => {
 
 chrome.runtime.onMessage.addListener(
   (
-    message: ExtensionMessage,
+    message: InboundMessage,
     _sender,
     sendResponse: (response: PingResponse | void) => void,
   ) => {
