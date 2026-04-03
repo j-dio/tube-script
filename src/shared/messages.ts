@@ -15,6 +15,9 @@ export type PopupMessage = PingCommand | ExtractTranscriptCommand
 /** Every message the content script is allowed to send. */
 export type ContentMessage = ExtractTranscriptCommand
 
+/** Popup → content script: run page capture + background pipeline, return transcript result. */
+export type RelayExtractFromPageCommand = { type: 'RELAY_EXTRACT_FROM_POPUP' }
+
 /** Union of all messages the service worker can receive. */
 export type InboundMessage = PopupMessage | ContentMessage
 
