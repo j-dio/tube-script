@@ -341,8 +341,12 @@ async function fetchCaptionViaInterceptor(tabId: number): Promise<string> {
 
 // ─── Offscreen / clipboard ────────────────────────────────────────────────
 
-/** ES-module offscreen page may register `onMessage` after `createDocument` resolves — wait briefly. */
-const OFFSCREEN_LISTENER_BOOT_MS = 220
+/**
+ * ES-module offscreen page registers `onMessage` after the module loads — allow time after
+ * the first `createDocument` only. We keep the document open between extractions so the
+ * listener stays alive (closing after each run caused "Receiving end does not exist").
+ */
+const OFFSCREEN_LISTENER_BOOT_MS = 520
 
 async function ensureOffscreenDocument(): Promise<void> {
   if (await chrome.offscreen.hasDocument()) return
@@ -352,12 +356,6 @@ async function ensureOffscreenDocument(): Promise<void> {
     justification: 'Write the processed transcript to the clipboard (Manifest V3).',
   })
   await new Promise((r) => setTimeout(r, OFFSCREEN_LISTENER_BOOT_MS))
-}
-
-async function closeOffscreenWhenDone(): Promise<void> {
-  if (await chrome.offscreen.hasDocument()) {
-    await chrome.offscreen.closeDocument()
-  }
 }
 
 function writeClipboardViaOffscreen(text: string): Promise<void> {
@@ -387,9 +385,9 @@ const OFFSCREEN_CONNECTION_ERR = /Receiving end does not exist|Could not establi
 /** Retries when the offscreen document has not finished registering `runtime.onMessage` yet. */
 async function writeClipboardViaOffscreenReliable(text: string): Promise<void> {
   let lastErr: Error | undefined
-  for (let attempt = 0; attempt < 10; attempt++) {
+  for (let attempt = 0; attempt < 14; attempt++) {
     if (attempt > 0) {
-      await new Promise((r) => setTimeout(r, 60 + attempt * 45))
+      await new Promise((r) => setTimeout(r, 80 + attempt * 50))
     }
     try {
       await writeClipboardViaOffscreen(text)
@@ -492,10 +490,11 @@ async function runExtractPipeline(payload: TranscriptRequestPayload, tabId: numb
     clipboardOk = true
     console.log('[TubeScript] pipeline: clipboard write OK')
   } catch (clipErr) {
-    console.error('[TubeScript] pipeline: clipboard write FAILED:', clipErr)
-    // Don't fail the whole pipeline — return the text so the caller can try a fallback
-  } finally {
-    try { await closeOffscreenWhenDone() } catch { /* ignore */ }
+    // Offscreen can lose the race on cold start; content script / popup may still copy.
+    console.warn(
+      '[TubeScript] pipeline: offscreen clipboard unavailable (fallback may still copy):',
+      clipErr,
+    )
   }
 
   const success: TranscriptSuccess = {
