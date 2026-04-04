@@ -15,14 +15,55 @@
  *  - Store captured caption data on a DOM attribute for the extension to read
  *  - If captions haven't been loaded yet, trigger the player to load them
  */
+function pageVideoId() {
+  try {
+    var u = new URL(location.href)
+    var v = u.searchParams.get('v')
+    if (v) return v
+    var m = u.pathname.match(/^\/shorts\/([^/?#]+)/)
+    return m ? m[1] : null
+  } catch (e) {
+    return null
+  }
+}
+
+function videoIdFromTimedtextUrl(urlStr) {
+  try {
+    var abs = urlStr.indexOf('http') === 0 ? urlStr : location.origin + (urlStr.charAt(0) === '/' ? '' : '/') + urlStr
+    var u = new URL(abs)
+    var vid = u.searchParams.get('v')
+    if (vid) return vid
+    vid = u.searchParams.get('video_id')
+    if (vid) return vid
+    var id = u.searchParams.get('id')
+    if (id && id.length >= 8) return id
+    return null
+  } catch (e) {
+    return null
+  }
+}
+
+function storeCaptionPayload(text, requestUrl) {
+  window.__tubescriptCaptionData = text
+  var fromReq = videoIdFromTimedtextUrl(requestUrl)
+  var pv = pageVideoId()
+  window.__tubescriptLastTimedtextVideoId = fromReq || pv || window.__tubescriptLastTimedtextVideoId
+}
+
 ;(function tubescriptCaptionInterceptor() {
   // If we've already injected, don't double-inject
   if (window.__tubescriptInterceptorInstalled) {
-    // Just read any already-captured data
+    var pv = pageVideoId()
+    var lv = window.__tubescriptLastTimedtextVideoId
+    if (pv && lv && pv !== lv) {
+      window.__tubescriptCaptionData = ''
+      window.__tubescriptLastTimedtextVideoId = null
+    }
     return window.__tubescriptCaptionData || ''
   }
   window.__tubescriptInterceptorInstalled = true
   window.__tubescriptCaptionData = ''
+  window.__tubescriptLastTimedtextVideoId = null
 
   var TIMEDTEXT_PATTERN = /\/api\/timedtext/
 
@@ -43,7 +84,7 @@
       xhr.onreadystatechange = function () {
         if (xhr.readyState === 4 && xhr.status === 200 && xhr.responseText) {
           console.log('[TubeScript] interceptor: captured XHR timedtext response, length:', xhr.responseText.length)
-          window.__tubescriptCaptionData = xhr.responseText
+          storeCaptionPayload(xhr.responseText, xhr.__tsUrl || '')
         }
         if (origOnReady) origOnReady.apply(this, arguments)
       }
@@ -52,7 +93,7 @@
       xhr.addEventListener('load', function () {
         if (xhr.status === 200 && xhr.responseText) {
           console.log('[TubeScript] interceptor: captured XHR load timedtext, length:', xhr.responseText.length)
-          window.__tubescriptCaptionData = xhr.responseText
+          storeCaptionPayload(xhr.responseText, xhr.__tsUrl || '')
         }
       })
     }
@@ -71,7 +112,7 @@
         cloned.text().then(function (text) {
           if (text) {
             console.log('[TubeScript] interceptor: captured fetch timedtext, length:', text.length)
-            window.__tubescriptCaptionData = text
+            storeCaptionPayload(text, urlStr)
           }
         })
         return response
