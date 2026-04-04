@@ -4,17 +4,19 @@ import { prependMetadataHeader } from '@/pipeline/metadata'
 import { normalizeTranscriptBody } from '@/pipeline/normalizer'
 import {
   extractCaptionTracks,
-  fetchCaptionTrack,
   parseCaptionPayload,
   selectCaptionTrack,
 } from '@/pipeline/parser'
 import { stripTimestampsFromSegments } from '@/pipeline/timestamps'
-import { EXTENSION_NAME, OFFSCREEN_DOCUMENT_PATH } from '@/shared/constants'
+import { EXTENSION_NAME, OFFSCREEN_DOCUMENT_PATH, READ_YT_PLAYER_INJECT_FILE } from '@/shared/constants'
 import type {
   ClipboardWriteMessage,
   InboundMessage,
   OffscreenResponse,
   PingResponse,
+  ReadYtPlayerResponseErr,
+  ReadYtPlayerResponseOk,
+  ReadYtPlayerResponsePayload,
   TranscriptError,
   TranscriptResponse,
   TranscriptSuccess,
@@ -24,15 +26,20 @@ import { installServiceWorkerDomPolyfill } from './sw-dom-polyfill'
 
 installServiceWorkerDomPolyfill()
 
+/** Static MAIN-world scripts under `public/inject/` (CSP-safe). */
+const INTERCEPTOR_FILE = 'inject/fetch-caption.js'
+const TRIGGER_FILE = 'inject/trigger-captions.js'
+const READ_CAPTIONS_FILE = 'inject/read-captions.js'
+
 chrome.runtime.onInstalled.addListener(() => {
   console.log(`[${EXTENSION_NAME}] service worker installed`)
 })
 
 chrome.runtime.onMessage.addListener(
   (
-    message: InboundMessage | ClipboardWriteMessage,
-    _sender,
-    sendResponse: (r: PingResponse | TranscriptResponse | void) => void,
+    message: InboundMessage | ClipboardWriteMessage | { type: 'INSTALL_CAPTION_INTERCEPTOR' },
+    sender,
+    sendResponse: (r: PingResponse | TranscriptResponse | ReadYtPlayerResponsePayload | void) => void,
   ) => {
     if (message.type === 'CLIPBOARD_WRITE') {
       return false
@@ -43,8 +50,48 @@ chrome.runtime.onMessage.addListener(
       return false
     }
 
+    // Early interceptor install — called by content script at load time.
+    if (message.type === 'INSTALL_CAPTION_INTERCEPTOR') {
+      const tabId = sender.tab?.id
+      if (tabId !== undefined) {
+        void chrome.scripting.executeScript({
+          target: { tabId },
+          world: 'MAIN',
+          files: [INTERCEPTOR_FILE],
+        }).catch(() => { /* Tab may have navigated away */ })
+      }
+      return false
+    }
+
+    if (message.type === 'READ_YT_INITIAL_PLAYER_RESPONSE') {
+      const tabId = sender.tab?.id
+      if (tabId === undefined) {
+        const err: ReadYtPlayerResponseErr = { ok: false, error: 'No tab for this message' }
+        sendResponse(err)
+        return false
+      }
+      void readYtPlayerJsonWithRetry(tabId)
+        .then((json) => {
+          const ok: ReadYtPlayerResponseOk = { ok: true, json }
+          sendResponse(ok)
+        })
+        .catch((err: unknown) => {
+          const e: ReadYtPlayerResponseErr = {
+            ok: false,
+            error: err instanceof Error ? err.message : String(err),
+          }
+          sendResponse(e)
+        })
+      return true
+    }
+
     if (message.type === 'EXTRACT_TRANSCRIPT') {
-      void runExtractPipeline(message.payload)
+      const tabId = sender.tab?.id
+      if (tabId === undefined) {
+        sendResponse(unknownToTranscriptError(new Error('No tab context for fetch')))
+        return false
+      }
+      void runExtractPipeline(message.payload, tabId)
         .then(sendResponse)
         .catch((err: unknown) => {
           sendResponse(unknownToTranscriptError(err))
@@ -59,6 +106,22 @@ chrome.runtime.onMessage.addListener(
 function unknownToTranscriptError(err: unknown): TranscriptError {
   const msg = err instanceof Error ? err.message : 'Something went wrong. Try refreshing the page.'
   return { type: 'TRANSCRIPT_ERROR', payload: { error: msg } }
+}
+
+async function readYtPlayerJsonWithRetry(tabId: number): Promise<string | null> {
+  const delayMs = 250
+  const maxAttempts = 24
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    const [injection] = await chrome.scripting.executeScript({
+      target: { tabId },
+      world: 'MAIN',
+      files: [READ_YT_PLAYER_INJECT_FILE],
+    })
+    const json = injection?.result as string | null | undefined
+    if (json) return json
+    await new Promise((r) => setTimeout(r, delayMs))
+  }
+  return null
 }
 
 function payloadToPlayerResponse(payload: TranscriptRequestPayload): unknown {
@@ -76,13 +139,81 @@ function payloadToPlayerResponse(payload: TranscriptRequestPayload): unknown {
   }
 }
 
-async function fetchCaptionWithRetry(baseUrl: string): Promise<string> {
-  try {
-    return await fetchCaptionTrack(baseUrl)
-  } catch {
-    return await fetchCaptionTrack(baseUrl)
-  }
+// ─── Caption retrieval via interceptor ────────────────────────────────────
+
+/**
+ * Install the XHR/fetch interceptor and read any already-captured data.
+ */
+async function installInterceptorAndRead(tabId: number): Promise<string> {
+  const [injection] = await chrome.scripting.executeScript({
+    target: { tabId },
+    world: 'MAIN',
+    files: [INTERCEPTOR_FILE],
+  })
+  return (injection?.result ?? '') as string
 }
+
+/**
+ * Trigger YouTube's player to load captions via static MAIN-world script.
+ */
+async function triggerCaptionLoad(tabId: number): Promise<void> {
+  await chrome.scripting.executeScript({
+    target: { tabId },
+    world: 'MAIN',
+    files: [TRIGGER_FILE],
+  })
+}
+
+/**
+ * Read captured captions via static MAIN-world script.
+ */
+async function readCapturedCaptions(tabId: number): Promise<string> {
+  const [injection] = await chrome.scripting.executeScript({
+    target: { tabId },
+    world: 'MAIN',
+    files: [READ_CAPTIONS_FILE],
+  })
+  return (injection?.result ?? '') as string
+}
+
+/**
+ * Gets caption text by:
+ * 1. Installing the interceptor (hooks XHR/fetch in MAIN world)
+ * 2. Triggering the YouTube player to load captions
+ * 3. Polling until caption data is captured
+ */
+async function fetchCaptionViaInterceptor(tabId: number): Promise<string> {
+  // Step 1: Install interceptor and check for already-captured data
+  let captured = await installInterceptorAndRead(tabId)
+  if (captured) {
+    console.log('[TubeScript] interceptor: already had captured data, length:', captured.length)
+    return captured
+  }
+
+  // Step 2: Trigger / refresh captions (toggle if CC already on — see trigger-captions.js)
+  console.log('[TubeScript] interceptor: no captured timedtext yet, triggering caption load...')
+  await triggerCaptionLoad(tabId)
+
+  // Step 3: Poll for captured data
+  const pollDelay = 300
+  const maxPolls = 20 // 6 seconds max
+  for (let i = 0; i < maxPolls; i++) {
+    await new Promise((r) => setTimeout(r, pollDelay))
+    captured = await readCapturedCaptions(tabId)
+    if (captured) {
+      console.log('[TubeScript] interceptor: captured after', (i + 1) * pollDelay, 'ms, length:', captured.length)
+      return captured
+    }
+  }
+
+  console.warn('[TubeScript] interceptor: timed out waiting for caption data')
+  return ''
+}
+
+// ─── Offscreen / clipboard ────────────────────────────────────────────────
+
+/** ES-module offscreen page may register `onMessage` after `createDocument` resolves — wait briefly. */
+const OFFSCREEN_LISTENER_BOOT_MS = 220
 
 async function ensureOffscreenDocument(): Promise<void> {
   if (await chrome.offscreen.hasDocument()) return
@@ -91,6 +222,7 @@ async function ensureOffscreenDocument(): Promise<void> {
     reasons: [chrome.offscreen.Reason.CLIPBOARD],
     justification: 'Write the processed transcript to the clipboard (Manifest V3).',
   })
+  await new Promise((r) => setTimeout(r, OFFSCREEN_LISTENER_BOOT_MS))
 }
 
 async function closeOffscreenWhenDone(): Promise<void> {
@@ -121,14 +253,39 @@ function writeClipboardViaOffscreen(text: string): Promise<void> {
   })
 }
 
+const OFFSCREEN_CONNECTION_ERR = /Receiving end does not exist|Could not establish connection/i
+
+/** Retries when the offscreen document has not finished registering `runtime.onMessage` yet. */
+async function writeClipboardViaOffscreenReliable(text: string): Promise<void> {
+  let lastErr: Error | undefined
+  for (let attempt = 0; attempt < 10; attempt++) {
+    if (attempt > 0) {
+      await new Promise((r) => setTimeout(r, 60 + attempt * 45))
+    }
+    try {
+      await writeClipboardViaOffscreen(text)
+      return
+    } catch (e) {
+      lastErr = e instanceof Error ? e : new Error(String(e))
+      if (!OFFSCREEN_CONNECTION_ERR.test(lastErr.message)) {
+        throw lastErr
+      }
+    }
+  }
+  throw lastErr ?? new Error('Offscreen clipboard unavailable')
+}
+
 function countWords(text: string): number {
   const t = text.trim()
   if (!t) return 0
   return t.split(/\s+/).length
 }
 
-async function runExtractPipeline(payload: TranscriptRequestPayload): Promise<TranscriptResponse> {
+// ─── Extract pipeline ─────────────────────────────────────────────────────
+
+async function runExtractPipeline(payload: TranscriptRequestPayload, tabId: number): Promise<TranscriptResponse> {
   const tracks = extractCaptionTracks(payloadToPlayerResponse(payload))
+  console.log('[TubeScript] pipeline: tracks found:', tracks.length, tracks.map((t) => `${t.languageCode}/${t.kind}`))
   if (!tracks.length) {
     return {
       type: 'TRANSCRIPT_ERROR',
@@ -139,6 +296,7 @@ async function runExtractPipeline(payload: TranscriptRequestPayload): Promise<Tr
   const browserLang =
     typeof navigator !== 'undefined' && navigator.language ? navigator.language : 'en'
   const selected = selectCaptionTrack(tracks, browserLang)
+  console.log('[TubeScript] pipeline: selected track:', selected?.languageCode, selected?.kind)
   if (!selected) {
     return {
       type: 'TRANSCRIPT_ERROR',
@@ -148,24 +306,39 @@ async function runExtractPipeline(payload: TranscriptRequestPayload): Promise<Tr
 
   let raw: string
   try {
-    raw = await fetchCaptionWithRetry(selected.baseUrl)
+    raw = await fetchCaptionViaInterceptor(tabId)
+    console.log('[TubeScript] pipeline: interceptor result, raw length:', raw.length,
+      '| prefix:', JSON.stringify(raw.slice(0, 80)))
   } catch (e) {
-    const technical = e instanceof Error ? e.message : String(e)
-    if (technical.includes('fetch') || technical.includes('Caption fetch')) {
-      return {
-        type: 'TRANSCRIPT_ERROR',
-        payload: { error: 'Something went wrong. Try refreshing the page.' },
-      }
+    console.error('[TubeScript] pipeline: interceptor error', e)
+    return {
+      type: 'TRANSCRIPT_ERROR',
+      payload: { error: 'Something went wrong. Try refreshing the page.' },
     }
-    return unknownToTranscriptError(e)
+  }
+
+  if (!raw) {
+    return {
+      type: 'TRANSCRIPT_ERROR',
+      payload: { error: 'Could not capture captions. Try enabling subtitles on the video first, then try again.' },
+    }
   }
 
   const parsed = parseCaptionPayload(raw)
+  console.log('[TubeScript] pipeline: parsed segments:', parsed.length, '| first:', parsed[0]?.text?.slice(0, 60))
+
   const segmentTexts = parsed.map((s) => s.text)
   const decoded = decodeCaptionSegments(segmentTexts)
+  console.log('[TubeScript] pipeline: decoded segments:', decoded.length, '| first:', decoded[0]?.slice(0, 60))
+
   const stripped = stripTimestampsFromSegments(decoded)
+  console.log('[TubeScript] pipeline: stripped segments:', stripped.length)
+
   const filtered = filterFillerSegments(stripped)
+  console.log('[TubeScript] pipeline: filtered (non-empty):', filtered.filter(Boolean).length)
+
   const body = normalizeTranscriptBody(filtered)
+  console.log('[TubeScript] pipeline: body chars:', body.length, '| blank:', !body.trim())
 
   if (!body.trim()) {
     return {
@@ -183,21 +356,22 @@ async function runExtractPipeline(payload: TranscriptRequestPayload): Promise<Tr
 
   const wordCount = countWords(body)
 
+  let clipboardOk = false
   try {
     await ensureOffscreenDocument()
-    await writeClipboardViaOffscreen(finalText)
-  } catch {
-    return {
-      type: 'TRANSCRIPT_ERROR',
-      payload: { error: "Couldn't copy to clipboard. Check permissions." },
-    }
+    await writeClipboardViaOffscreenReliable(finalText)
+    clipboardOk = true
+    console.log('[TubeScript] pipeline: clipboard write OK')
+  } catch (clipErr) {
+    console.error('[TubeScript] pipeline: clipboard write FAILED:', clipErr)
+    // Don't fail the whole pipeline — return the text so the caller can try a fallback
   } finally {
-    await closeOffscreenWhenDone()
+    try { await closeOffscreenWhenDone() } catch { /* ignore */ }
   }
 
   const success: TranscriptSuccess = {
     type: 'TRANSCRIPT_SUCCESS',
-    payload: { wordCount, text: finalText },
+    payload: { wordCount, text: finalText, clipboardOk },
   }
   return success
 }
