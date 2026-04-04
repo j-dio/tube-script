@@ -26,6 +26,27 @@ import { installServiceWorkerDomPolyfill } from './sw-dom-polyfill'
 
 installServiceWorkerDomPolyfill()
 
+/** Watch URL, Shorts, or youtu.be — used to reject stale `ytInitialPlayerResponse` after SPA navigation. */
+function extractVideoIdFromTabUrl(url: string | undefined): string | null {
+  if (!url) return null
+  try {
+    const u = new URL(url)
+    if (u.hostname === 'youtu.be') {
+      const id = u.pathname.replace(/^\//, '').split('/')[0]
+      return id || null
+    }
+    if (u.hostname.includes('youtube.com')) {
+      const v = u.searchParams.get('v')
+      if (v) return v
+      const shorts = u.pathname.match(/^\/shorts\/([^/?#]+)/)
+      if (shorts) return shorts[1]
+    }
+  } catch {
+    /* ignore */
+  }
+  return null
+}
+
 /** Static MAIN-world scripts under `public/inject/` (CSP-safe). */
 const INTERCEPTOR_FILE = 'inject/fetch-caption.js'
 const TRIGGER_FILE = 'inject/trigger-captions.js'
@@ -108,20 +129,58 @@ function unknownToTranscriptError(err: unknown): TranscriptError {
   return { type: 'TRANSCRIPT_ERROR', payload: { error: msg } }
 }
 
+/**
+ * Polls MAIN-world `ytInitialPlayerResponse` until it matches the tab URL’s video id when
+ * possible (SPA navigation). If it never catches up, returns the last non-null snapshot so
+ * the content script can still build a payload; metadata is aligned from the page URL/DOM there.
+ */
 async function readYtPlayerJsonWithRetry(tabId: number): Promise<string | null> {
-  const delayMs = 250
-  const maxAttempts = 24
+  const delayMs = 200
+  const maxAttempts = 16
+  let lastNonNullJson: string | null = null
+
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    let expectedVid: string | null = null
+    try {
+      const tab = await chrome.tabs.get(tabId)
+      expectedVid = extractVideoIdFromTabUrl(tab.url)
+    } catch {
+      return null
+    }
+
     const [injection] = await chrome.scripting.executeScript({
       target: { tabId },
       world: 'MAIN',
       files: [READ_YT_PLAYER_INJECT_FILE],
     })
     const json = injection?.result as string | null | undefined
-    if (json) return json
+    if (!json) {
+      await new Promise((r) => setTimeout(r, delayMs))
+      continue
+    }
+
+    lastNonNullJson = json
+
+    if (!expectedVid) {
+      return json
+    }
+
+    let playerVid: string | null = null
+    try {
+      const o = JSON.parse(json) as { videoDetails?: { videoId?: string } }
+      playerVid = o.videoDetails?.videoId ?? null
+    } catch {
+      return json
+    }
+
+    if (playerVid === expectedVid) {
+      return json
+    }
+
     await new Promise((r) => setTimeout(r, delayMs))
   }
-  return null
+
+  return lastNonNullJson
 }
 
 function payloadToPlayerResponse(payload: TranscriptRequestPayload): unknown {
