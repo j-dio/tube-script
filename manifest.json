@@ -3,7 +3,7 @@
   "name": "TubeScript",
   "version": "1.0.0",
   "description": "One-click YouTube transcript extraction. Clean, dense, clipboard-ready.",
-  "permissions": ["activeTab", "clipboardWrite", "offscreen"],
+  "permissions": ["activeTab", "clipboardWrite", "offscreen", "scripting"],
   "host_permissions": ["https://www.youtube.com/*"],
   "background": {
     "service_worker": "src/background/service-worker.ts",

@@ -18,8 +18,18 @@ export type ContentMessage = ExtractTranscriptCommand
 /** Popup → content script: run page capture + background pipeline, return transcript result. */
 export type RelayExtractFromPageCommand = { type: 'RELAY_EXTRACT_FROM_POPUP' }
 
+/**
+ * Content script → service worker: read `window.ytInitialPlayerResponse` in the page MAIN world
+ * (avoids CSP-blocked inline `<script>` injection on strict pages like YouTube).
+ */
+export type ReadYtPlayerResponseCommand = { type: 'READ_YT_INITIAL_PLAYER_RESPONSE' }
+
+export type ReadYtPlayerResponseOk = { ok: true; json: string | null }
+export type ReadYtPlayerResponseErr = { ok: false; error: string }
+export type ReadYtPlayerResponsePayload = ReadYtPlayerResponseOk | ReadYtPlayerResponseErr
+
 /** Union of all messages the service worker can receive. */
-export type InboundMessage = PopupMessage | ContentMessage
+export type InboundMessage = PopupMessage | ContentMessage | ReadYtPlayerResponseCommand
 
 // ─── Responses: service worker → popup / content ──────────────────────────────
 
@@ -27,7 +37,7 @@ export type PingResponse = { ok: true; version: string }
 
 export type TranscriptSuccess = {
   type: 'TRANSCRIPT_SUCCESS'
-  payload: { wordCount: number; text: string }
+  payload: { wordCount: number; text: string; clipboardOk?: boolean }
 }
 
 export type TranscriptError = {
