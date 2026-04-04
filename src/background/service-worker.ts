@@ -66,6 +66,17 @@ chrome.runtime.onInstalled.addListener(() => {
   console.log(`[${EXTENSION_NAME}] service worker installed`)
 })
 
+chrome.commands.onCommand.addListener((command) => {
+  if (command !== 'trigger-extract') return
+  void chrome.tabs.query({ active: true, currentWindow: true }).then((tabs) => {
+    const tab = tabs[0]
+    if (!tab?.id || !isYoutubeWatchOrShortsUrl(tab.url)) return
+    chrome.tabs.sendMessage(tab.id, { type: 'RELAY_EXTRACT_FROM_KEYBOARD' }, () => {
+      void chrome.runtime.lastError // suppress "no receiving end" if content script not loaded
+    })
+  })
+})
+
 function isYoutubeWatchOrShortsUrl(raw: string | undefined): boolean {
   if (!raw) return false
   try {
@@ -479,6 +490,7 @@ async function runExtractPipeline(payload: TranscriptRequestPayload, tabId: numb
     title: payload.title,
     channelName: payload.channelName,
     videoUrl: payload.videoUrl,
+    kind: selected.kind,
   })
 
   const wordCount = countWords(body)

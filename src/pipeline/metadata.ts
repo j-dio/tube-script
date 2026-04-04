@@ -20,17 +20,16 @@ export interface TranscriptMeta {
   title: string
   channelName: string
   videoUrl: string
+  /** Caption track kind — used to prepend an accuracy warning for auto-generated tracks. */
+  kind?: 'asr' | 'manual'
 }
 
 export function prependMetadataHeader(body: string, meta: TranscriptMeta): string {
-  const header = [
-    '---',
-    `Title: ${meta.title}`,
-    `Channel: ${meta.channelName}`,
-    `URL: ${meta.videoUrl}`,
-    '---',
-    '',
-  ].join('\n')
+  const lines: string[] = ['---', `Title: ${meta.title}`, `Channel: ${meta.channelName}`, `URL: ${meta.videoUrl}`, '---', '']
 
-  return `${header}\n${body}`
+  if (meta.kind === 'asr') {
+    lines.push('[Auto-generated transcript: spelling and grammar may be imperfect]', '')
+  }
+
+  return `${lines.join('\n')}\n${body}`
 }
