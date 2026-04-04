@@ -22,6 +22,15 @@
       "run_at": "document_idle"
     }
   ],
+  "commands": {
+    "trigger-extract": {
+      "suggested_key": {
+        "default": "Ctrl+Shift+E",
+        "mac": "MacCtrl+Shift+E"
+      },
+      "description": "Extract transcript from the current YouTube video"
+    }
+  },
   "action": {
     "default_popup": "src/popup/index.html",
     "default_icon": {

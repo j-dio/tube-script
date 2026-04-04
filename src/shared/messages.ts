@@ -18,6 +18,9 @@ export type ContentMessage = ExtractTranscriptCommand
 /** Popup → content script: run page capture + background pipeline, return transcript result. */
 export type RelayExtractFromPageCommand = { type: 'RELAY_EXTRACT_FROM_POPUP' }
 
+/** Service worker → content script: keyboard shortcut triggered extraction (shows toast feedback). */
+export type RelayExtractFromKeyboardCommand = { type: 'RELAY_EXTRACT_FROM_KEYBOARD' }
+
 /**
  * Content script → service worker: read `window.ytInitialPlayerResponse` in the page MAIN world
  * (avoids CSP-blocked inline `<script>` injection on strict pages like YouTube).
