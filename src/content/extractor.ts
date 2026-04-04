@@ -1,5 +1,6 @@
 import type { ReadYtPlayerResponsePayload } from '@/shared/messages'
 import type { CaptionTrack, TranscriptRequestPayload } from '@/shared/types'
+import { applyPageMetadataOverlay } from './page-metadata-overlay'
 
 // ─── Internal shape of the YouTube player response ───────────────────────────
 
@@ -63,7 +64,12 @@ export function extractPageCaptionContext(): Promise<TranscriptRequestPayload> {
             reject(new Error('No usable caption tracks found'))
             return
           }
-          resolve(result)
+          resolve(
+            applyPageMetadataOverlay(result, {
+              href: window.location.href,
+              document,
+            }),
+          )
         } catch {
           reject(new Error('Failed to parse ytInitialPlayerResponse'))
         }
