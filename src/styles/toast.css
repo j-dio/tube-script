@@ -1,8 +1,0 @@
-/**
- * Toast overlay styles (import from content script when Shadow DOM host is implemented).
- * Kept minimal for Phase 1 scaffolding.
- */
-
-.tubescript-toast-host {
-  all: initial;
-}
