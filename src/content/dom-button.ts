@@ -2,6 +2,7 @@ import type { TranscriptResponse } from '@/shared/messages'
 import { COPY_TRANSCRIPT_BUTTON_TITLE } from '@/shared/user-copy'
 import { runTranscriptExtraction } from './extract-flow'
 import { showToast } from './toast'
+import { isYoutubeWatchPageHref } from './watch-page'
 
 const BUTTON_ID = 'tubescript-copy-transcript-btn'
 const BTN_STYLE_ID = 'tubescript-button-styles'
@@ -120,6 +121,8 @@ function injectButton(anchor: Element): void {
 }
 
 function tryMount(): void {
+  // Only inject on standard /watch?v= pages — Shorts have a completely different DOM.
+  if (!isYoutubeWatchPageHref(window.location.href)) return
   const anchor = document.querySelector('#top-level-buttons-computed')
   if (!anchor || !(anchor instanceof HTMLElement)) return
   injectButton(anchor)
