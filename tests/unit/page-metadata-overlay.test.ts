@@ -87,4 +87,16 @@ describe('applyPageMetadataOverlay', () => {
     expect(out.videoId).toBe('SHORT99')
     expect(out.videoUrl).toBe('https://www.youtube.com/shorts/SHORT99')
   })
+
+  it('prefers MAIN-world title hint over og:title and payload', () => {
+    const doc = document.implementation.createHTMLDocument()
+    doc.head.innerHTML = '<meta property="og:title" content="Stale OG - YouTube">'
+    const p = basePayload({ title: 'Stale payload title' })
+    const out = applyPageMetadataOverlay(p, {
+      href: 'https://www.youtube.com/watch?v=V',
+      document: doc,
+      watchTitleMain: 'Fresh MAIN title',
+    })
+    expect(out.title).toBe('Fresh MAIN title')
+  })
 })

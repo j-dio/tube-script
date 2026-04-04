@@ -4,6 +4,8 @@ import { showToast } from './toast'
 
 const BUTTON_ID = 'tubescript-copy-transcript-btn'
 
+let mutationObserverStarted = false
+
 function formatWordCount(n: number): string {
   return n.toLocaleString(undefined, { maximumFractionDigits: 0 })
 }
@@ -76,6 +78,8 @@ function tryMount(): void {
  */
 export function mountTranscriptButton(): void {
   tryMount()
+  if (mutationObserverStarted) return
+  mutationObserverStarted = true
   const observer = new MutationObserver(() => {
     tryMount()
   })

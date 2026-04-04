@@ -24,7 +24,12 @@ export type RelayExtractFromPageCommand = { type: 'RELAY_EXTRACT_FROM_POPUP' }
  */
 export type ReadYtPlayerResponseCommand = { type: 'READ_YT_INITIAL_PLAYER_RESPONSE' }
 
-export type ReadYtPlayerResponseOk = { ok: true; json: string | null }
+export type ReadYtPlayerResponseOk = {
+  ok: true
+  json: string | null
+  /** MAIN-world title aligned to current watch URL when possible (avoids stale og:title on SPA). */
+  watchTitle?: string | null
+}
 export type ReadYtPlayerResponseErr = { ok: false; error: string }
 export type ReadYtPlayerResponsePayload = ReadYtPlayerResponseOk | ReadYtPlayerResponseErr
 

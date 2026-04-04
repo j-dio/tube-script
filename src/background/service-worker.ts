@@ -8,7 +8,12 @@ import {
   selectCaptionTrack,
 } from '@/pipeline/parser'
 import { stripTimestampsFromSegments } from '@/pipeline/timestamps'
-import { EXTENSION_NAME, OFFSCREEN_DOCUMENT_PATH, READ_YT_PLAYER_INJECT_FILE } from '@/shared/constants'
+import {
+  EXTENSION_NAME,
+  OFFSCREEN_DOCUMENT_PATH,
+  READ_WATCH_TITLE_INJECT_FILE,
+  READ_YT_PLAYER_INJECT_FILE,
+} from '@/shared/constants'
 import type {
   ClipboardWriteMessage,
   InboundMessage,
@@ -56,6 +61,64 @@ chrome.runtime.onInstalled.addListener(() => {
   console.log(`[${EXTENSION_NAME}] service worker installed`)
 })
 
+function isYoutubeWatchOrShortsUrl(raw: string | undefined): boolean {
+  if (!raw) return false
+  try {
+    const u = new URL(raw)
+    if (!u.hostname.endsWith('youtube.com')) return false
+    if (u.pathname === '/watch' && u.searchParams.has('v')) return true
+    return /^\/shorts\/[^/?#]+/.test(u.pathname)
+  } catch {
+    return false
+  }
+}
+
+function installCaptionInterceptorForTab(tabId: number): void {
+  void chrome.scripting
+    .executeScript({
+      target: { tabId },
+      world: 'MAIN',
+      files: [INTERCEPTOR_FILE],
+    })
+    .catch(() => {
+      /* Tab closed or no access */
+    })
+}
+
+const YT_NAV_FILTER = { hostSuffix: 'youtube.com' } as const
+
+chrome.webNavigation.onHistoryStateUpdated.addListener(
+  (details) => {
+    if (details.frameId !== 0) return
+    if (!isYoutubeWatchOrShortsUrl(details.url)) return
+    installCaptionInterceptorForTab(details.tabId)
+  },
+  { url: [YT_NAV_FILTER] },
+)
+
+chrome.webNavigation.onCommitted.addListener(
+  (details) => {
+    if (details.frameId !== 0) return
+    if (!isYoutubeWatchOrShortsUrl(details.url)) return
+    installCaptionInterceptorForTab(details.tabId)
+  },
+  { url: [YT_NAV_FILTER] },
+)
+
+async function readWatchTitleInMain(tabId: number): Promise<string> {
+  try {
+    const [injection] = await chrome.scripting.executeScript({
+      target: { tabId },
+      world: 'MAIN',
+      files: [READ_WATCH_TITLE_INJECT_FILE],
+    })
+    const r = injection?.result
+    return typeof r === 'string' ? r : ''
+  } catch {
+    return ''
+  }
+}
+
 chrome.runtime.onMessage.addListener(
   (
     message: InboundMessage | ClipboardWriteMessage | { type: 'INSTALL_CAPTION_INTERCEPTOR' },
@@ -75,11 +138,7 @@ chrome.runtime.onMessage.addListener(
     if (message.type === 'INSTALL_CAPTION_INTERCEPTOR') {
       const tabId = sender.tab?.id
       if (tabId !== undefined) {
-        void chrome.scripting.executeScript({
-          target: { tabId },
-          world: 'MAIN',
-          files: [INTERCEPTOR_FILE],
-        }).catch(() => { /* Tab may have navigated away */ })
+        installCaptionInterceptorForTab(tabId)
       }
       return false
     }
@@ -91,9 +150,13 @@ chrome.runtime.onMessage.addListener(
         sendResponse(err)
         return false
       }
-      void readYtPlayerJsonWithRetry(tabId)
-        .then((json) => {
-          const ok: ReadYtPlayerResponseOk = { ok: true, json }
+      void Promise.all([readYtPlayerJsonWithRetry(tabId), readWatchTitleInMain(tabId)])
+        .then(([json, watchTitle]) => {
+          const ok: ReadYtPlayerResponseOk = {
+            ok: true,
+            json,
+            watchTitle: watchTitle.trim() ? watchTitle.trim() : null,
+          }
           sendResponse(ok)
         })
         .catch((err: unknown) => {
@@ -252,10 +315,12 @@ async function fetchCaptionViaInterceptor(tabId: number): Promise<string> {
   // Step 2: Trigger / refresh captions (toggle if CC already on — see trigger-captions.js)
   console.log('[TubeScript] interceptor: no captured timedtext yet, triggering caption load...')
   await triggerCaptionLoad(tabId)
+  // Let trigger-captions.js finish its CC toggle window (~280ms) before polling.
+  await new Promise((r) => setTimeout(r, 360))
 
   // Step 3: Poll for captured data
-  const pollDelay = 300
-  const maxPolls = 20 // 6 seconds max
+  const pollDelay = 280
+  const maxPolls = 24
   for (let i = 0; i < maxPolls; i++) {
     await new Promise((r) => setTimeout(r, pollDelay))
     captured = await readCapturedCaptions(tabId)

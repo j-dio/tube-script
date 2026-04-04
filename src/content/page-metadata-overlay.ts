@@ -70,30 +70,39 @@ function canonicalUrlForVideo(href: string, pageVid: string): string {
   return `https://www.youtube.com/watch?v=${pageVid}`
 }
 
+export type PageMetadataOverlayContext = {
+  href: string
+  document: Document
+  /**
+   * Title read in the page MAIN world (matched `ytInitialPlayerResponse`, watch h1, then og:title).
+   * Prefer this over isolated-world meta tags, which often lag behind SPA navigations.
+   */
+  watchTitleMain?: string | null
+}
+
 /**
- * Prefer the visible watch URL and DOM for metadata. YouTube SPA can leave
- * `ytInitialPlayerResponse` partially stale (e.g. `videoId` matches the new video while
- * `title` / `author` still describe the previous one), so we do not skip overlay when ids
- * already match — we always re-bind id + URL from the address bar and take title/channel
- * from the page when we can read them.
+ * Prefer the visible watch URL and DOM for metadata. Title uses MAIN-world hint first;
+ * channel still uses light-DOM selectors in the content script.
  */
 export function applyPageMetadataOverlay(
   payload: TranscriptRequestPayload,
-  ctx: { href: string; document: Document },
+  ctx: PageMetadataOverlayContext,
 ): TranscriptRequestPayload {
   const pageVid = extractVideoIdFromLocationHref(ctx.href)
   if (!pageVid) {
     return payload
   }
 
-  const title = readOpenGraphTitle(ctx.document)
+  const mainTitle = ctx.watchTitleMain?.trim() ?? ''
+  const fallbackDomTitle = readOpenGraphTitle(ctx.document)
+  const title = mainTitle || fallbackDomTitle || payload.title
   const channel = readChannelNameFromDom(ctx.document)
 
   return {
     ...payload,
     videoId: pageVid,
     videoUrl: canonicalUrlForVideo(ctx.href, pageVid),
-    title: title || payload.title,
+    title,
     channelName: channel || payload.channelName,
   }
 }

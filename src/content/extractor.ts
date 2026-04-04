@@ -64,10 +64,15 @@ export function extractPageCaptionContext(): Promise<TranscriptRequestPayload> {
             reject(new Error('No usable caption tracks found'))
             return
           }
+          const watchTitleMain =
+            response.watchTitle && response.watchTitle.trim() !== ''
+              ? response.watchTitle.trim()
+              : null
           resolve(
             applyPageMetadataOverlay(result, {
               href: window.location.href,
               document,
+              watchTitleMain,
             }),
           )
         } catch {
