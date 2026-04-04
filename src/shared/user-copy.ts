@@ -14,5 +14,8 @@ export const ERR_COULD_NOT_CAPTURE_CAPTIONS = `Could not capture captions. ${USE
 
 export const ERR_SOMETHING_WENT_WRONG = `Something went wrong. ${USER_HINT_EXTRACT_RETRY}`
 
+/** Service worker asleep or not yet listening (common right after install or idle wake). */
+export const ERR_EXTENSION_NOT_REACHABLE = `Could not reach TubeScript. Open the TubeScript toolbar menu once or refresh this tab, then try again. ${USER_HINT_EXTRACT_RETRY}`
+
 /** Native tooltip on the injected watch-page button (keep under ~200 chars for readability). */
 export const COPY_TRANSCRIPT_BUTTON_TITLE = `Copy transcript (title, channel, URL). ${USER_HINT_SUBTITLES} ${USER_HINT_FIRST_TAB}`

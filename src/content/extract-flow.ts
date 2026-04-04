@@ -1,6 +1,32 @@
 import type { ExtractTranscriptCommand, TranscriptError, TranscriptResponse } from '@/shared/messages'
-import { ERR_NO_CAPTION_TRACKS, ERR_SOMETHING_WENT_WRONG } from '@/shared/user-copy'
+import {
+  ERR_EXTENSION_NOT_REACHABLE,
+  ERR_NO_CAPTION_TRACKS,
+  ERR_SOMETHING_WENT_WRONG,
+} from '@/shared/user-copy'
 import { extractPageCaptionContext } from './extractor'
+
+const SERVICE_WORKER_UNAVAILABLE = /Receiving end does not exist|Could not establish connection|Extension context invalidated/i
+
+async function sleep(ms: number): Promise<void> {
+  await new Promise((r) => setTimeout(r, ms))
+}
+
+/**
+ * MV3 service workers sleep; first message after idle can fail. Retry once after a short pause.
+ */
+async function withServiceWorkerRetry<T>(operation: () => Promise<T>): Promise<T> {
+  try {
+    return await operation()
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e)
+    if (!SERVICE_WORKER_UNAVAILABLE.test(msg)) {
+      throw e
+    }
+    await sleep(200)
+    return await operation()
+  }
+}
 
 function sendExtractToBackground(command: ExtractTranscriptCommand): Promise<TranscriptResponse> {
   return new Promise((resolve, reject) => {
@@ -23,6 +49,9 @@ function sendExtractToBackground(command: ExtractTranscriptCommand): Promise<Tra
 }
 
 function mapExtractorFailure(message: string): TranscriptError {
+  if (SERVICE_WORKER_UNAVAILABLE.test(message)) {
+    return { type: 'TRANSCRIPT_ERROR', payload: { error: ERR_EXTENSION_NOT_REACHABLE } }
+  }
   const lower = message.toLowerCase()
   if (
     lower.includes('no usable caption') ||
@@ -32,15 +61,9 @@ function mapExtractorFailure(message: string): TranscriptError {
     return { type: 'TRANSCRIPT_ERROR', payload: { error: ERR_NO_CAPTION_TRACKS } }
   }
   if (lower.includes('timed out')) {
-    return {
-      type: 'TRANSCRIPT_ERROR',
-      payload: { error: ERR_SOMETHING_WENT_WRONG },
-    }
+    return { type: 'TRANSCRIPT_ERROR', payload: { error: ERR_SOMETHING_WENT_WRONG } }
   }
-  return {
-    type: 'TRANSCRIPT_ERROR',
-    payload: { error: ERR_SOMETHING_WENT_WRONG },
-  }
+  return { type: 'TRANSCRIPT_ERROR', payload: { error: ERR_SOMETHING_WENT_WRONG } }
 }
 
 /**
@@ -48,9 +71,9 @@ function mapExtractorFailure(message: string): TranscriptError {
  */
 export async function runTranscriptExtraction(): Promise<TranscriptResponse> {
   try {
-    const payload = await extractPageCaptionContext()
+    const payload = await withServiceWorkerRetry(() => extractPageCaptionContext())
     const command: ExtractTranscriptCommand = { type: 'EXTRACT_TRANSCRIPT', payload }
-    const result = await sendExtractToBackground(command)
+    const result = await withServiceWorkerRetry(() => sendExtractToBackground(command))
 
     // If the pipeline succeeded but clipboard failed in the offscreen document,
     // try fallback clipboard write from the content script (has user gesture context).
@@ -60,7 +83,7 @@ export async function runTranscriptExtraction(): Promise<TranscriptResponse> {
         await navigator.clipboard.writeText(result.payload.text)
         console.log('[TubeScript] clipboard fallback: success')
       } catch (clipErr) {
-        console.error('[TubeScript] clipboard fallback: also failed', clipErr)
+        console.warn('[TubeScript] clipboard fallback: also failed', clipErr)
         // Still return success — the transcript was extracted even if clipboard failed
       }
     }
