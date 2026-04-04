@@ -49,7 +49,22 @@ export async function runTranscriptExtraction(): Promise<TranscriptResponse> {
   try {
     const payload = await extractPageCaptionContext()
     const command: ExtractTranscriptCommand = { type: 'EXTRACT_TRANSCRIPT', payload }
-    return await sendExtractToBackground(command)
+    const result = await sendExtractToBackground(command)
+
+    // If the pipeline succeeded but clipboard failed in the offscreen document,
+    // try fallback clipboard write from the content script (has user gesture context).
+    if (result.type === 'TRANSCRIPT_SUCCESS' && !result.payload.clipboardOk) {
+      console.log('[TubeScript] clipboard fallback: writing from content script')
+      try {
+        await navigator.clipboard.writeText(result.payload.text)
+        console.log('[TubeScript] clipboard fallback: success')
+      } catch (clipErr) {
+        console.error('[TubeScript] clipboard fallback: also failed', clipErr)
+        // Still return success — the transcript was extracted even if clipboard failed
+      }
+    }
+
+    return result
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e)
     return mapExtractorFailure(msg)

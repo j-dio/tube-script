@@ -1,3 +1,4 @@
+import type { ReadYtPlayerResponsePayload } from '@/shared/messages'
 import type { CaptionTrack, TranscriptRequestPayload } from '@/shared/types'
 
 // ─── Internal shape of the YouTube player response ───────────────────────────
@@ -27,75 +28,47 @@ interface YtPlayerResponse {
 /**
  * Reads `window.ytInitialPlayerResponse` from the YouTube page.
  *
- * Content scripts execute in an isolated JS world and cannot directly access
- * page globals. We work around this by injecting a temporary inline <script>
- * that runs in the MAIN world, reads the variable, serialises it, and posts it
- * back to us via window.postMessage with a unique one-time key.
- *
- * A 5-second timeout guards against pages where the variable never appears.
+ * Content scripts run in an isolated world and cannot read page globals. The
+ * service worker injects a static file via `executeScript({ world: 'MAIN', files })`.
+ * Do not use inline `<script>` or `executeScript({ func })` on youtube.com — page CSP
+ * blocks inline script; extension-origin `files` are allowed.
  */
 export function extractPageCaptionContext(): Promise<TranscriptRequestPayload> {
   return new Promise((resolve, reject) => {
-    // Unique key prevents cross-contamination if multiple tabs are open.
-    const key = `tube-script-yrp-${Date.now()}-${Math.random().toString(36).slice(2)}`
-    let settled = false
-
-    const timer = setTimeout(() => {
-      cleanup()
-      reject(new Error('Timed out waiting for ytInitialPlayerResponse'))
-    }, 5_000)
-
-    function onMessage(event: MessageEvent) {
-      if (
-        event.source !== window ||
-        !event.data ||
-        (event.data as { type?: unknown }).type !== key
-      ) {
-        return
-      }
-      cleanup()
-
-      const payload = (event.data as { payload: string | null }).payload
-      if (!payload) {
-        reject(new Error('ytInitialPlayerResponse not found on this page'))
-        return
-      }
-
-      try {
-        const parsed = JSON.parse(payload) as YtPlayerResponse
-        const result = buildPayload(parsed)
-        if (!result) {
-          reject(new Error('No usable caption tracks found'))
+    chrome.runtime.sendMessage(
+      { type: 'READ_YT_INITIAL_PLAYER_RESPONSE' },
+      (response: ReadYtPlayerResponsePayload | undefined) => {
+        const last = chrome.runtime.lastError
+        if (last) {
+          reject(new Error(last.message))
           return
         }
-        resolve(result)
-      } catch {
-        reject(new Error('Failed to parse ytInitialPlayerResponse'))
-      }
-    }
+        if (!response) {
+          reject(new Error('No response from background'))
+          return
+        }
+        if (!response.ok) {
+          reject(new Error(response.error))
+          return
+        }
+        if (!response.json) {
+          reject(new Error('ytInitialPlayerResponse not found on this page'))
+          return
+        }
 
-    function cleanup() {
-      if (settled) return
-      settled = true
-      clearTimeout(timer)
-      window.removeEventListener('message', onMessage)
-    }
-
-    window.addEventListener('message', onMessage)
-
-    // Inject a self-contained inline script that runs in the MAIN world.
-    const script = document.createElement('script')
-    script.textContent = `
-      (function () {
-        var data = window.ytInitialPlayerResponse;
-        window.postMessage(
-          { type: ${JSON.stringify(key)}, payload: data ? JSON.stringify(data) : null },
-          window.location.origin || '*'
-        );
-      })();
-    `
-    document.documentElement.appendChild(script)
-    script.remove()
+        try {
+          const parsed = JSON.parse(response.json) as YtPlayerResponse
+          const result = buildPayload(parsed)
+          if (!result) {
+            reject(new Error('No usable caption tracks found'))
+            return
+          }
+          resolve(result)
+        } catch {
+          reject(new Error('Failed to parse ytInitialPlayerResponse'))
+        }
+      },
+    )
   })
 }
 
