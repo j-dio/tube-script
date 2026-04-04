@@ -4,11 +4,11 @@
 
 @layer components {
   .ts-toast-container {
-    @apply pointer-events-none fixed right-4 top-4 z-[2147483647] flex max-w-sm flex-col gap-2;
+    @apply pointer-events-none fixed right-4 top-4 z-[2147483647] flex max-w-lg flex-col gap-3;
   }
 
   .ts-toast {
-    @apply pointer-events-auto rounded-lg border px-4 py-3 text-sm font-medium leading-snug shadow-lg backdrop-blur-sm transition-opacity duration-300;
+    @apply pointer-events-auto max-w-lg rounded-xl border-2 px-5 py-4 text-base font-medium leading-relaxed shadow-xl backdrop-blur-sm transition-opacity duration-300;
   }
 
   .ts-toast--success {
