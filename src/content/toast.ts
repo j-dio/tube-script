@@ -8,6 +8,8 @@ function getOrCreateShadowRoot(): ShadowRoot {
     host = document.createElement('div')
     host.id = HOST_ID
     host.setAttribute('data-tubescript', 'toast-host')
+    // Pin the shadow host above everything — YouTube sets very high z-indices on its overlays.
+    host.style.cssText = 'position:fixed;top:0;left:0;width:0;height:0;z-index:2147483647;pointer-events:none;'
     document.documentElement.appendChild(host)
     const shadow = host.attachShadow({ mode: 'open' })
     const style = document.createElement('style')
