@@ -44,26 +44,47 @@ function videoIdFromTimedtextUrl(urlStr) {
 }
 
 function storeCaptionPayload(text, requestUrl) {
-  window.__tubescriptCaptionData = text
   var fromReq = videoIdFromTimedtextUrl(requestUrl)
   var pv = pageVideoId()
+  // Drop responses that clearly belong to another video (SPA / race).
+  if (pv && fromReq && fromReq !== pv) {
+    console.log('[TubeScript] interceptor: skip timedtext for mismatched video id', fromReq, '!=', pv)
+    return
+  }
+  window.__tubescriptCaptionData = text
   window.__tubescriptLastTimedtextVideoId = fromReq || pv || window.__tubescriptLastTimedtextVideoId
+}
+
+function clearCaptionCache() {
+  window.__tubescriptCaptionData = ''
+  window.__tubescriptLastTimedtextVideoId = null
 }
 
 ;(function tubescriptCaptionInterceptor() {
   // If we've already injected, don't double-inject
   if (window.__tubescriptInterceptorInstalled) {
     var pv = pageVideoId()
-    var lv = window.__tubescriptLastTimedtextVideoId
-    if (pv && lv && pv !== lv) {
-      window.__tubescriptCaptionData = ''
-      window.__tubescriptLastTimedtextVideoId = null
+    var prevPv = window.__tubescriptPageVideoId
+    if (pv && prevPv && pv !== prevPv) {
+      clearCaptionCache()
     }
-    return window.__tubescriptCaptionData || ''
+    if (pv) {
+      window.__tubescriptPageVideoId = pv
+    }
+
+    var lv = window.__tubescriptLastTimedtextVideoId
+    var data = window.__tubescriptCaptionData || ''
+    // Never return buffered text for a different watch: fixes lv=null + stale body.
+    if (pv && data && (!lv || pv !== lv)) {
+      clearCaptionCache()
+      data = ''
+    }
+    return data
   }
   window.__tubescriptInterceptorInstalled = true
   window.__tubescriptCaptionData = ''
   window.__tubescriptLastTimedtextVideoId = null
+  window.__tubescriptPageVideoId = pageVideoId()
 
   var TIMEDTEXT_PATTERN = /\/api\/timedtext/
 
