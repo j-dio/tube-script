@@ -1,0 +1,40 @@
+<svg width="300" height="120" viewBox="0 0 300 120" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+  <defs>
+    <linearGradient id="tsBase" x1="8%" y1="6%" x2="92%" y2="94%">
+      <stop offset="0%" stop-color="#8adfff"/>
+      <stop offset="28%" stop-color="#42b6ff"/>
+      <stop offset="55%" stop-color="#1e88e5"/>
+      <stop offset="100%" stop-color="#0a3a7a"/>
+    </linearGradient>
+    <radialGradient id="tsShine" cx="32%" cy="28%" r="58%" fx="28%" fy="22%">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.95"/>
+      <stop offset="22%" stop-color="#ffffff" stop-opacity="0.35"/>
+      <stop offset="55%" stop-color="#ffffff" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="tsDepth" x1="78%" y1="18%" x2="18%" y2="92%">
+      <stop offset="0%" stop-color="#000000" stop-opacity="0"/>
+      <stop offset="100%" stop-color="#000000" stop-opacity="0.35"/>
+    </linearGradient>
+    <linearGradient id="tsRim" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#c9f0ff" stop-opacity="0.55"/>
+      <stop offset="40%" stop-color="#ffffff" stop-opacity="0.12"/>
+      <stop offset="100%" stop-color="#052e63" stop-opacity="0.45"/>
+    </linearGradient>
+    <clipPath id="tsClip">
+      <path d="M 20 17 L 20 103 Q 20 109 27 106 L 119 66 Q 126 60 119 54 L 27 14 Q 20 11 20 17 Z"/>
+    </clipPath>
+  </defs>
+  <g fill="none" stroke="#1a1a1a" stroke-width="9" stroke-linecap="round">
+    <line x1="198" y1="22" x2="276" y2="22"/>
+    <line x1="206" y1="35" x2="276" y2="35"/>
+    <line x1="206" y1="48" x2="276" y2="48"/>
+    <line x1="232" y1="61" x2="276" y2="61"/>
+    <line x1="232" y1="74" x2="276" y2="74"/>
+    <line x1="206" y1="87" x2="276" y2="87"/>
+    <line x1="174" y1="100" x2="276" y2="100"/>
+  </g>
+  <path d="M 20 17 L 20 103 Q 20 109 27 106 L 119 66 Q 126 60 119 54 L 27 14 Q 20 11 20 17 Z" fill="url(#tsBase)"/>
+  <path d="M 20 17 L 20 103 Q 20 109 27 106 L 119 66 Q 126 60 119 54 L 27 14 Q 20 11 20 17 Z" fill="url(#tsDepth)" clip-path="url(#tsClip)"/>
+  <path d="M 20 17 L 20 103 Q 20 109 27 106 L 119 66 Q 126 60 119 54 L 27 14 Q 20 11 20 17 Z" fill="url(#tsShine)" clip-path="url(#tsClip)"/>
+  <path d="M 20 17 L 20 103 Q 20 109 27 106 L 119 66 Q 126 60 119 54 L 27 14 Q 20 11 20 17 Z" fill="none" stroke="url(#tsRim)" stroke-width="1.25" stroke-linejoin="round"/>
+</svg>

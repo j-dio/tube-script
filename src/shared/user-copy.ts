@@ -8,6 +8,16 @@ export const USER_HINT_FIRST_TAB =
 /** Full troubleshooting line for capture / generic failures. */
 export const USER_HINT_EXTRACT_RETRY = `${USER_HINT_SUBTITLES} ${USER_HINT_FIRST_TAB}`
 
+/**
+ * Same guidance as {@link USER_HINT_EXTRACT_RETRY}, as ordered steps for popup UI.
+ * (Error strings keep the single paragraph for toasts / narrow surfaces.)
+ */
+export const USER_HINT_EXTRACT_STEPS = [
+  'Turn on subtitles (CC) on the YouTube player.',
+  'If this tab is new to TubeScript, reload the page once.',
+  'Click Extract Transcript again (CC must stay on).',
+] as const
+
 export const ERR_NO_CAPTION_TRACKS = `No transcript available for this video. ${USER_HINT_EXTRACT_RETRY}`
 
 export const ERR_COULD_NOT_CAPTURE_CAPTIONS = `Could not capture captions. ${USER_HINT_EXTRACT_RETRY}`

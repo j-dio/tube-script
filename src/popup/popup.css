@@ -4,5 +4,8 @@
 
 body {
   margin: 0;
-  min-width: 18rem;
+  min-width: 23.75rem; /* ~380px — matches Stitch popup reference */
+  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+  background-color: #ffffff;
+  color: #171717;
 }
