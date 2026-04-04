@@ -8,7 +8,7 @@
   }
 
   .ts-toast {
-    @apply pointer-events-auto rounded-lg border px-4 py-3 text-sm font-medium shadow-lg backdrop-blur-sm transition-opacity duration-300;
+    @apply pointer-events-auto rounded-lg border px-4 py-3 text-sm font-medium leading-snug shadow-lg backdrop-blur-sm transition-opacity duration-300;
   }
 
   .ts-toast--success {

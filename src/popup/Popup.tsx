@@ -1,5 +1,6 @@
 import { useCallback, useState } from 'react'
 import { EXTENSION_NAME } from '@/shared/constants'
+import { USER_HINT_EXTRACT_RETRY } from '@/shared/user-copy'
 import type { RelayExtractFromPageCommand, TranscriptResponse } from '@/shared/messages'
 
 type Phase = 'idle' | 'loading' | 'success' | 'error'
@@ -60,6 +61,7 @@ export function Popup() {
       <p className="mt-1 text-xs leading-relaxed text-slate-400">
         One click copies a cleaned transcript (with metadata) to your clipboard.
       </p>
+      <p className="mt-2 text-xs leading-relaxed text-slate-500">{USER_HINT_EXTRACT_RETRY}</p>
 
       <button
         type="button"
@@ -72,7 +74,9 @@ export function Popup() {
 
       <div className="mt-4 min-h-[3rem] rounded-md border border-slate-800 bg-slate-900/60 p-3 text-xs leading-relaxed" aria-live="polite">
         {phase === 'idle' && (
-          <p className="text-slate-500">Use on a video page. The result is copied automatically.</p>
+          <p className="text-slate-500">
+            Use on a watch page (toolbar button or here). The transcript is copied automatically when it succeeds.
+          </p>
         )}
         {phase === 'loading' && <p className="text-slate-300">Running pipeline and copying to clipboard…</p>}
         {phase === 'success' && (

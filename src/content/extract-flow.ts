@@ -1,4 +1,5 @@
 import type { ExtractTranscriptCommand, TranscriptError, TranscriptResponse } from '@/shared/messages'
+import { ERR_NO_CAPTION_TRACKS, ERR_SOMETHING_WENT_WRONG } from '@/shared/user-copy'
 import { extractPageCaptionContext } from './extractor'
 
 function sendExtractToBackground(command: ExtractTranscriptCommand): Promise<TranscriptResponse> {
@@ -28,17 +29,17 @@ function mapExtractorFailure(message: string): TranscriptError {
     lower.includes('caption tracks') ||
     lower.includes('not found')
   ) {
-    return { type: 'TRANSCRIPT_ERROR', payload: { error: 'No transcript available for this video' } }
+    return { type: 'TRANSCRIPT_ERROR', payload: { error: ERR_NO_CAPTION_TRACKS } }
   }
   if (lower.includes('timed out')) {
     return {
       type: 'TRANSCRIPT_ERROR',
-      payload: { error: 'Something went wrong. Try refreshing the page.' },
+      payload: { error: ERR_SOMETHING_WENT_WRONG },
     }
   }
   return {
     type: 'TRANSCRIPT_ERROR',
-    payload: { error: 'Something went wrong. Try refreshing the page.' },
+    payload: { error: ERR_SOMETHING_WENT_WRONG },
   }
 }
 

@@ -1,4 +1,5 @@
 import type { TranscriptResponse } from '@/shared/messages'
+import { COPY_TRANSCRIPT_BUTTON_TITLE } from '@/shared/user-copy'
 import { runTranscriptExtraction } from './extract-flow'
 import { showToast } from './toast'
 
@@ -15,12 +16,7 @@ function handleTranscriptResult(result: TranscriptResponse): void {
     showToast(`✓ Transcript copied — ${formatWordCount(result.payload.wordCount)} words`, 'success')
     return
   }
-  const err = result.payload.error
-  const isNoTranscript = err.toLowerCase().includes('no transcript')
-  showToast(
-    isNoTranscript ? '✗ No transcript available for this video' : `✗ ${err}`,
-    'error',
-  )
+  showToast(`✗ ${result.payload.error}`, 'error')
 }
 
 function injectButton(anchor: Element): void {
@@ -30,6 +26,7 @@ function injectButton(anchor: Element): void {
   btn.id = BUTTON_ID
   btn.type = 'button'
   btn.setAttribute('aria-label', 'Copy video transcript')
+  btn.setAttribute('title', COPY_TRANSCRIPT_BUTTON_TITLE)
   btn.append(document.createTextNode('📋 '), document.createTextNode('Copy Transcript'))
   btn.style.cssText = [
     'margin-inline-start: 8px',

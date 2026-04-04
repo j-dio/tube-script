@@ -27,6 +27,11 @@ import type {
   TranscriptSuccess,
 } from '@/shared/messages'
 import type { TranscriptRequestPayload } from '@/shared/types'
+import {
+  ERR_COULD_NOT_CAPTURE_CAPTIONS,
+  ERR_NO_CAPTION_TRACKS,
+  ERR_SOMETHING_WENT_WRONG,
+} from '@/shared/user-copy'
 import { installServiceWorkerDomPolyfill } from './sw-dom-polyfill'
 
 installServiceWorkerDomPolyfill()
@@ -413,7 +418,7 @@ async function runExtractPipeline(payload: TranscriptRequestPayload, tabId: numb
   if (!tracks.length) {
     return {
       type: 'TRANSCRIPT_ERROR',
-      payload: { error: 'No transcript available for this video' },
+      payload: { error: ERR_NO_CAPTION_TRACKS },
     }
   }
 
@@ -424,7 +429,7 @@ async function runExtractPipeline(payload: TranscriptRequestPayload, tabId: numb
   if (!selected) {
     return {
       type: 'TRANSCRIPT_ERROR',
-      payload: { error: 'No transcript available for this video' },
+      payload: { error: ERR_NO_CAPTION_TRACKS },
     }
   }
 
@@ -437,14 +442,14 @@ async function runExtractPipeline(payload: TranscriptRequestPayload, tabId: numb
     console.error('[TubeScript] pipeline: interceptor error', e)
     return {
       type: 'TRANSCRIPT_ERROR',
-      payload: { error: 'Something went wrong. Try refreshing the page.' },
+      payload: { error: ERR_SOMETHING_WENT_WRONG },
     }
   }
 
   if (!raw) {
     return {
       type: 'TRANSCRIPT_ERROR',
-      payload: { error: 'Could not capture captions. Try enabling subtitles on the video first, then try again.' },
+      payload: { error: ERR_COULD_NOT_CAPTURE_CAPTIONS },
     }
   }
 

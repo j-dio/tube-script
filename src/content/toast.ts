@@ -35,8 +35,9 @@ export function showToast(message: string, variant: 'success' | 'error'): void {
   toast.setAttribute('role', 'status')
   container.appendChild(toast)
 
+  const visibleMs = variant === 'error' ? 6500 : 3000
   window.setTimeout(() => {
     toast.classList.add('ts-toast--leave')
     window.setTimeout(() => toast.remove(), 320)
-  }, 3000)
+  }, visibleMs)
 }
