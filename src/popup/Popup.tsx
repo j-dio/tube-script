@@ -70,6 +70,13 @@ export function Popup() {
         }
 
         if (response?.type === 'TRANSCRIPT_SUCCESS') {
+          // If the offscreen clipboard write failed (and the content-script fallback also failed),
+          // the popup itself is focused and has native clipboard access — try one more time.
+          if (!response.payload.clipboardOk) {
+            void navigator.clipboard.writeText(response.payload.text).catch(() => {
+              // Best-effort; user will see success UI regardless since text was extracted.
+            })
+          }
           setPhase('success')
           setWordCount(response.payload.wordCount)
           setTitleSnippet(firstMeaningfulLine(response.payload.text))
