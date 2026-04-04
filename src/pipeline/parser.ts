@@ -75,37 +75,44 @@ export function selectCaptionTrack(
   )
 }
 
-// ─── Caption fetch ────────────────────────────────────────────────────────────
+// ─── Caption parsing ──────────────────────────────────────────────────────────
 
 /**
- * Fetches the raw caption payload for a track.
- * Requests JSON3 format to simplify parsing; falls back gracefully.
+ * YouTube timedtext JSON often includes a leading `)]}'` anti-XSSI prefix. Without
+ * stripping it, the payload does not start with `{`, we mis-route to XML parsing,
+ * and the transcript appears empty ("Transcript was too short to extract").
  */
-export async function fetchCaptionTrack(baseUrl: string): Promise<string> {
-  const url = new URL(baseUrl)
-  url.searchParams.set('fmt', 'json3')
-
-  const res = await fetch(url.toString())
-  if (!res.ok) {
-    throw new Error(`Caption fetch failed: ${res.status} ${res.statusText}`)
+function stripTimedtextJsonNoise(raw: string): string {
+  let s = raw.trim()
+  if (s.charCodeAt(0) === 0xfeff) {
+    s = s.slice(1).trimStart()
   }
-  return res.text()
+  if (s.startsWith(")]}'")) {
+    s = s.slice(4).trimStart()
+  }
+  if (s.startsWith('while(1);')) {
+    s = s.slice(9).trimStart()
+  }
+  return s
 }
-
-// ─── Caption parsing ──────────────────────────────────────────────────────────
 
 /**
  * Parses a raw caption response — JSON3 or XML timedtext — into segments.
  * Returns an empty array for blank or unparseable input.
  */
 export function parseCaptionPayload(raw: string): CaptionSegment[] {
-  const trimmed = raw.trim()
+  const trimmed = stripTimedtextJsonNoise(raw)
+  console.log('[TubeScript] parseCaptionPayload: raw length', raw.length, '| trimmed prefix:', JSON.stringify(trimmed.slice(0, 80)))
   if (!trimmed) return []
 
   if (trimmed.startsWith('{')) {
-    return parseJson3(trimmed)
+    const segs = parseJson3(trimmed)
+    console.log('[TubeScript] parseCaptionPayload: JSON3 path → segments:', segs.length)
+    return segs
   }
-  return parseXml(trimmed)
+  const segs = parseXml(trimmed)
+  console.log('[TubeScript] parseCaptionPayload: XML path → segments:', segs.length)
+  return segs
 }
 
 // ─── JSON3 ────────────────────────────────────────────────────────────────────
@@ -156,19 +163,37 @@ function parseJson3(raw: string): CaptionSegment[] {
 
 // ─── XML timedtext ────────────────────────────────────────────────────────────
 
+/**
+ * Parses YouTube timedtext XML using regex rather than DOMParser.
+ * DOMParser is absent or unreliable in Chrome Service Workers; regex is portable.
+ *
+ * YouTube's format: <text start="N.N" dur="N.N">encoded content</text>
+ * Attribute order is not guaranteed, so each attribute is extracted separately.
+ */
 function parseXml(raw: string): CaptionSegment[] {
-  const parser = new DOMParser()
-  const doc = parser.parseFromString(raw, 'text/xml')
-
-  // A parse error produces a <parsererror> root element.
-  if (doc.querySelector('parsererror')) return []
-
   const segments: CaptionSegment[] = []
-  for (const node of doc.querySelectorAll('text')) {
-    const start = parseFloat(node.getAttribute('start') ?? '0')
-    const duration = parseFloat(node.getAttribute('dur') ?? '0')
-    const text = decodeEntities(node.textContent ?? '').trim()
+  // Match every <text …>…</text> block, including multi-line content.
+  const tagRe = /<text\b([^>]*)>([\s\S]*?)<\/text>/g
+  const startRe = /\bstart="([\d.]+)"/
+  const durRe = /\bdur="([\d.]+)"/
+
+  let m: RegExpExecArray | null
+  while ((m = tagRe.exec(raw)) !== null) {
+    const attrs = m[1]
+    const inner = m[2]
+
+    const startMatch = startRe.exec(attrs)
+    if (!startMatch) continue
+
+    const start = parseFloat(startMatch[1])
+    const durMatch = durRe.exec(attrs)
+    const duration = durMatch ? parseFloat(durMatch[1]) : 0
+
+    // Strip any inner tags (e.g. <font>) before entity-decoding.
+    const rawText = inner.replace(/<[^>]+>/g, '')
+    const text = decodeEntities(rawText).trim()
     if (!text) continue
+
     segments.push({ text, start, duration })
   }
   return segments
@@ -177,11 +202,18 @@ function parseXml(raw: string): CaptionSegment[] {
 // ─── Entity decoding ──────────────────────────────────────────────────────────
 
 /**
- * Decodes HTML entities using the browser DOM (or jsdom in tests).
- * Example: `&#39;` → `'`, `&amp;` → `&`.
+ * Decodes HTML/XML character references using pure string replacement.
+ * Works in any JS environment (Service Worker, Node, browser).
+ * `&amp;` must be decoded last to avoid double-decoding (e.g. `&amp;lt;` → `&lt;` not `<`).
  */
 function decodeEntities(text: string): string {
-  const ta = document.createElement('textarea')
-  ta.innerHTML = text
-  return ta.value
+  return text
+    .replace(/&#x([0-9a-f]+);/gi, (_, hex) => String.fromCodePoint(parseInt(hex, 16)))
+    .replace(/&#(\d+);/g, (_, dec) => String.fromCodePoint(+dec))
+    .replace(/&nbsp;/gi, '\u00a0')
+    .replace(/&quot;/gi, '"')
+    .replace(/&apos;|&#39;/gi, "'")
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&amp;/gi, '&')
 }

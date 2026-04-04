@@ -238,5 +238,12 @@ describe('parseCaptionPayload', () => {
     it('returns an empty array for malformed JSON', () => {
       expect(parseCaptionPayload('{not valid json')).toEqual([])
     })
+
+    it('strips YouTube anti-XSSI )]}\' prefix before JSON3 parse', () => {
+      const prefixed = `)]}'\n${SAMPLE_JSON3}`
+      const segs = parseCaptionPayload(prefixed)
+      expect(segs).toHaveLength(2)
+      expect(segs[0].text).toBe('Hello, welcome to this tutorial.')
+    })
   })
 })
